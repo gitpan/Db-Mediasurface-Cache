@@ -1,5 +1,5 @@
 package Db::Mediasurface::Cache;
-$VERSION = 0.02;
+$VERSION = 0.03;
 use strict;
 use Carp;
 use constant NEXT  => 0;
@@ -9,12 +9,13 @@ use constant VALUE => 2;
 sub new
 {
     my ($class, %arg) = @_;
-    
-    my $list = [ undef, undef, undef ];
-    $list->[KEY] = $list; # special case -- points to end of list
-
+    my $list;
+    if (defined $arg{size}){
+	$list = [ undef, undef, undef ];
+	$list->[KEY] = $list; # special case -- points to end of list
+    }
     bless {
-	_max_size  => $arg{size} || 1000,
+	_max_size  => $arg{size} || undef,
 	_curr_size => 0,
 	_list     => $list
 	}, $class;
@@ -25,15 +26,20 @@ sub get
     my ($self,$key) = @_;
     return unless defined $key;
     my $value = undef;
-    for (my $prev = $self->{_list}; my $elem = $prev->[NEXT]; $prev = $elem){
-	if ($elem->[KEY] eq $key){
-	    $value = $elem->[VALUE];
-	    if (defined $elem->[NEXT]){
-		$prev->[NEXT] = $elem->[NEXT] || undef;
-		$self->{_curr_size} --;
-		$self->set($key,$value);
+    if (defined $self->{_max_size}){
+	for (my $prev = $self->{_list}; my $elem = $prev->[NEXT]; $prev = $elem){
+	    if ($elem->[KEY] eq $key){
+		$value = $elem->[VALUE];
+		if (defined $elem->[NEXT]){
+		    $prev->[NEXT] = $elem->[NEXT];
+		    $self->{_list}->[KEY] = $self->{_list}->[KEY]->[NEXT] = [ undef, $key, $value ];
+		}
+		last;
 	    }
-	    last;
+	}
+    } else {
+	if (exists $self->{_list}->{$key}){
+	    $value = $self->{_list}->{$key};
 	}
     }
     return $value;
@@ -42,14 +48,20 @@ sub get
 sub set
 {
     my ($self,%hash) = @_;
-    foreach my $key (keys %hash){
-	$self->unset($key);
-	$self->{_list}->[KEY] = $self->{_list}->[KEY]->[NEXT] = [ undef, $key, $hash{$key} ];
-	$self->{_curr_size} ++;
-    }
-    while ( $self->{_curr_size} > $self->{_max_size} ){
-	$self->{_list}->[NEXT] = $self->{_list}->[NEXT]->[NEXT];
-	$self->{_curr_size} --;
+    if (defined $self->{_max_size}){
+	foreach my $key (keys %hash){
+	    $self->unset($key);
+	    $self->{_list}->[KEY] = $self->{_list}->[KEY]->[NEXT] = [ undef, $key, $hash{$key} ];
+	    $self->{_curr_size} ++;
+	}
+	while ( $self->{_curr_size} > $self->{_max_size} ){
+	    $self->{_list}->[NEXT] = $self->{_list}->[NEXT]->[NEXT];
+	    $self->{_curr_size} --;
+	}
+    } else {
+	foreach my $key (keys %hash){
+	    $self->{_list}->{$key} = $hash{$key};
+	}
     }
 }
 
@@ -57,16 +69,22 @@ sub unset
 {
     my ($self,$key) = @_;
     return unless defined $key;
-    for (my $prev = $self->{_list}; my $elem = $prev->[NEXT]; $prev = $elem){
-	if ($elem->[KEY] eq $key){
-	    $self->{_curr_size} --;
-	    if (defined $elem->[NEXT]){
-		$prev->[NEXT] = $elem->[NEXT];
-	    } else {
-		$prev->[NEXT] = undef;
-		$self->{_list}->[KEY] = $prev;
+    if (defined $self->{_max_size}){
+	for (my $prev = $self->{_list}; my $elem = $prev->[NEXT]; $prev = $elem){
+	    if ($elem->[KEY] eq $key){
+		$self->{_curr_size} --;
+		if (defined $elem->[NEXT]){
+		    $prev->[NEXT] = $elem->[NEXT];
+		} else {
+		    $prev->[NEXT] = undef;
+		    $self->{_list}->[KEY] = $prev;
+		}
+		last;
 	    }
-	    last;
+	}
+    } else {
+	if (exists $self->{_list}->{$key}){
+	    delete $self->{_list}->{$key};
 	}
     }
 }
@@ -79,7 +97,7 @@ Db::Mediasurface::Cache - caches a specified number of key-value pairs, disgardi
 
 =head1 VERSION
 
-This document refers to version 0.02 of DB::Mediasurface::Cache, released July 24, 2001.
+This document refers to version 0.03 of DB::Mediasurface::Cache, released July 24, 2001.
 
 =head1 SYNOPSIS
 
@@ -109,7 +127,7 @@ Mediasurface relies on retrieving a unique ID for almost every object lookup. Th
 
 =item $cache = Db::Mediasurface::Cache->new(size=>1000);
 
-This class method constructs a new cache. the size parameter can be used to set the maximum number of key-value pairs to be cached (defaults to 1000).
+This class method constructs a new cache. the size parameter can be used to set the maximum number of key-value pairs to be cached. If size is omitted, the cache defaults to using a straight hash, which is a *lot* faster than the linked list method, but which has no protection from eating all your available RAM [NOTE: this is a change in behaviour from version 0.02].
 
 =back
 
@@ -117,7 +135,9 @@ This class method constructs a new cache. the size parameter can be used to set 
 
 =over 4
 
-=item $cache->set($key1,$value1,$key2,$value2...)
+=item $cache->set($key_1,$value_1...$key_n,$value_n)
+
+=item $cache->set(%key_value_hash)
 
 Sets key-value pairs.
 
