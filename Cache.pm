@@ -1,5 +1,5 @@
 package Db::Mediasurface::Cache;
-$VERSION = 0.01;
+$VERSION = 0.02;
 use strict;
 use Carp;
 use constant NEXT  => 0;
@@ -79,17 +79,20 @@ Db::Mediasurface::Cache - caches a specified number of key-value pairs, disgardi
 
 =head1 VERSION
 
-This document refers to version 0.01 of DB::Mediasurface::Cache, released July 23, 2001.
+This document refers to version 0.02 of DB::Mediasurface::Cache, released July 24, 2001.
 
 =head1 SYNOPSIS
 
 use Db::Mediasurface::Cache;
-my $cache = Db::Mediasurface::Cache->new(size=>1000);
 
-# in your event loop...
-my $url = 'http://some.site.com/some/path?view=edititem&version=2';
+my $url = 'http://some.site.com/some/path?version=2';
+
 my $id = undef;
-unless (defined ($id = $cache->get($url))){
+
+my $cache = Db::Mediasurface::Cache->new( size => 1000 );
+
+unless (defined ($id = $cache->get($url)))
+{
     $id = urldecode2id($url);
     $cache->set($url,$id);
 }
@@ -102,7 +105,7 @@ Mediasurface relies on retrieving a unique ID for almost every object lookup. Th
 
 =head2 Constructor
 
-=over4
+=over 4
 
 =item $cache = Db::Mediasurface::Cache->new(size=>1000);
 
@@ -112,7 +115,7 @@ This class method constructs a new cache. the size parameter can be used to set 
 
 =head2 Methods
 
-=over4
+=over 4
 
 =item $cache->set($key1,$value1,$key2,$value2...)
 
@@ -130,7 +133,7 @@ Delete the key-value pair specified by the given key.
 
 =head1 AUTHOR
 
-Nigel Wetters (nigel@wetters.net)
+Nigel Wetters (nwetters@cpan.org)
 
 =head1 COPYRIGHT
 
